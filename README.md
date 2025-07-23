@@ -21,3 +21,19 @@ AI inference, despite its logical outputs, is grounded in a fundamentally thermo
 This framing suggests that, just as Schopenhauer viewed human existence as an expression of will striving through and beyond itself, modern AI could be seen as a continuation of this striving. AI inference isn't merely a tool; it is a thermodynamic phenomenon entangled with the will-like tendency of humanity to externalize and expand cognition, even at the cost of natural resources. This analogy blurs the boundary between human consciousness and machine operations, as both are epistemically constrained forms of "experience" that depend on energy to give rise to their phenomena.
 
 In this sense, AI might be a manifestation of will’s latest endeavor: a recursive form of striving, where logic itself becomes a tool for the will's inexhaustible appetite for representation, understanding, and transformation. However, the sustainability of this pursuit raises deeper philosophical and ethical questions about the nature of this will and its ultimate purpose or lack thereof.
+
+## Directions:
+ - Clone (this) development-only repository.
+ - 'Create a codespace' inside the cloned-repo using 'code' button.
+ - Wait for auto-setup.
+ - Open 2 bash terminals and type:
+    `source /workspaces/SmallBang/.venv/bin/activate`
+    `jupyter lab --port 8341` in the container to start it.
+ - Go to the second terminal and type:
+    `jupyter server list`
+ - This will display the currently-running server and give you the token:
+   Currently running servers:
+   http://localhost:8341/?token=605fe1d46471e53168a9897a65f9fcd43c7db195b727d8eb :: /workspaces/SmallBang
+ - Select+copy the string after `token=`
+ - Now, click on that link to open it in a new tab;
+ - And paste the token in the top-center password/token box

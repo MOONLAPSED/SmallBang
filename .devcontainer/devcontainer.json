@@ -22,7 +22,7 @@
       "settings": {
         "terminal.integrated.defaultProfile.linux": "bash",
         "editor.formatOnSave": true,
-        "python.defaultInterpreterPath": "~/.pyenv/versions/3.13.5/bin/python",
+        "python.defaultInterpreterPath": "/workspaces/${localWorkspaceFolderBasename}/.venv/bin/python3",
         "python.languageServer": "Pyright",
         "python.analysis.typeCheckingMode": "basic",
         "python.linting.enabled": true,
@@ -45,7 +45,7 @@
       ]
     }
   },
-  "postCreateCommand": "uv venv .venv && uv pip install -U jupyterlab nox pyright ruff",
+  "postCreateCommand": "uv venv .venv && source .venv/bin/activate && uv pip install -U jupyterlab nox pyright ruff",
   "forwardPorts": [8341],
   "runArgs": ["--network=host"],
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind",
