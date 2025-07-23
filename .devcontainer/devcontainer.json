@@ -1,6 +1,7 @@
 {
   "name": "Py 3.13 with Jupyter, nox and uv.",
   "image": "mcr.microsoft.com/vscode/devcontainers/base:ubuntu",
+  "init": true,
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/git-lfs:1": {},
