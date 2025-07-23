@@ -2,7 +2,6 @@ import sys
 import os
 import platform
 import ctypes
-import re
 from enum import IntFlag, auto
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List, Tuple

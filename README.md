@@ -1,10 +1,16 @@
 # SmallBang
+[![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-blue.svg)](https://creativecommons.org/licenses/by/4.0/)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776AB.svg?logo=python)](https://www.python.org)
+[![Status: Experimental](https://img.shields.io/badge/Status-Experimental-red.svg)](https://github.com/Phovos/MSC)
+
+© 2025 by [Moonlapsed](https://github.com/MOONLAPSED). Licensed under [Creative Commons Attribution 4.0 International](http://creativecommons.org/licenses/by/4.0/).
+
 SmallTalk + BigBang; morphosemantic ray casting ECS/'O'OP ("physical"; epistimological) ontogeny.
 
 Pedagogical and morphosemantic playground for "Morphological Source Code", "Quineic Statistical Dynamics" topos, and morphological, correspondence(s) (and any other Noetherian invariances or Machian relations).
 
 无论你是谁，无论你做什么；你应该思考如何在将来通过人工智能做得更好。
-> Wúlùn nǐ shì shéi, wúlùn nǐ zuò shénme; nǐ yīnggāi sīkǎo rúhé zài jiānglái tōngguò réngōng zhìnéng zuò dé gèng hǎo
+> Wúlùn nǐ shì shéi, wúlùn nǐ zuò shénme; nǐ yīnggāi sīkǎo rúhé zài jiānglái tōngguò réngōng zhìnéng zuò dé gèng hǎo。
 
 The progression from Kant to Hegel often overlooks a critical philosopher who, despite his atheistic leanings, considered himself the true heir of Kantian agency and consciousness: Arthur Schopenhauer. Schopenhauerian 'will' underlies all appearances, sensations, thoughts, and consciousness. Even space and time, as forms of intuition, are mere representations of this will as it manifests to observers like us. The contents of an observer's experience—what we call phenomena—are mental constructs that veil the true nature of reality. This perspective fundamentally challenges the Kantian ideal of a purely logical or rational agent, instead revealing a world driven by an irrational, insatiable will.
 
