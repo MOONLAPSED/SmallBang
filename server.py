@@ -1,5 +1,5 @@
 from __future__ import annotations
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
 # -*- coding: utf-8 -*-
 import os
 import io
@@ -74,7 +74,82 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import reduce
 from importlib.util import spec_from_file_location, module_from_spec
 T = TypeVar('T')
+"""
+(MSC) Morphological Source Code Framework - SmallBang universe
+================================================================================
+<https://github.com/moonlapsed/smallbang> • MSC: Morphological Source Code © 2025 by Moonlapsed
+--------------------------------------------------------------------------------
 
+MSC implements *quantum-coherent computational morphogenesis* through tripartite
+T/V/C ontological typing and Quineic Statistical Dynamics (QSD) field operators.
+Runtime entities exist as **sparse bit-vectors over F₂** (one bit per redex),
+acted upon by **self-adjoint XOR-popcount operators**, enabling non-Markovian
+semantic lifting across compilation phases—**while never leaving L1 cache**. 
+The MSC framework draws inspiration from teleological and epistemological perspectives, 
+suggesting that computational+distributed processes are symmetric to quantum phenomena;
+and quantum QSD is not-unlike Stochastic/(non)Markovian dynamics (differential
+geometry and linear algebras; a field theory and its correspondence/covector dual).
+
+# Physical Atom : ByteWord (8-bit)
+  --------------------------------
+    ┌---┬---┬---┬---┬---┬---┬---┬---┐
+    │ C │ V │ V │ V │ T │ T │ T │ T │   ← raw octet
+    └---┴---┴---┴---┴---┴---┴---┴---┘
+    'C, V, and T' are binary (0/1) fields interpreted *lazily* by observation.
+
+    ByteWord as 2D Morphism:
+    • Each ByteWord is a **genus-2 torus** encoded by (w₁, w₂) ∈ ℤ₂×ℤ₂.
+    • All evolution is **XOR-only** on the winding vector.
+    • Entropy is **algorithmic**: S(x) = log₂|compress(x)|.
+    • Identity is the **intensional Merkle root** (not cryptographic).
+    • The only global fixpoint is Ξ(⌜Ξ⌝): the self-indexing saddlepoint.
+
+    • C — Captain / Thermodynamic MSB
+        - `C=1`: active (radiative); `C=0`: dormant (absorptive).
+        - Acts as a *pilot-wave* guiding the morphogenetic behavior of the ByteWord.
+        - No `V` or `T` structure is meaningful until `C` has been "absorbed".
+          Models include raycasting and Brownian motion in idealized gas.
+    
+    • V — Value Field (3 bits, deputizable)
+        - Supports **deputization cascades**, recursively promoting the next Vbits, Tbits
+          into the 'MSB role' if `C=0`.
+        - 'MSB ROLE' never includes the delegation of fundemental thermodynamic 'character', only the 'Actual MSB' Cbit's captaincy creates a 'pointer' ByteWord, that, using the morphosemantics of its interpretation, literally interact with their environment, should it exist, or, it can always recurse over itself 'pacman world'-style.
+        - This continues until a null-state is reached:
+            null-ByteWords are the basis of [[set-builder notation]], along with extensive, 'pointing' ByteWords in the environment when and if they 'collide' or merge.
+
+    • T — Type Field (4 bits; winding + arity)
+        - Encodes toroidal winding pair (w₁, w₂) ∈ ℤ₂×ℤ₂.
+        - Governs directional traversal in ByteWord-space.
+        - Also encodes arity and semantic lifting phase.
+        - Includes the bare-minimum required "ISA" for agentic-Motility; is extensible
+        - Only the two least-significant Tbits are needed for all of the above;
+            - The two most-significant Tbits are free-slots for custom "ISA" or other behavior, or just 'value'/magnitude etc.
+
+    ### "Deputization"
+        -------------
+    • NULL (C=0, T=0): identity glue — no semantic content, only topological.
+    • NULL-flavored states (C=0, T=0, V>0): inert deputies.
+    • Deputizing cascade: 
+        - When C=0, next `V` is promoted.
+        - Recurse until all bits are exhausted → ∅ (null-state).
+
+    • Deputizing Mask (side-band metadata):
+        - Tracks effective MSB depth: 0 ≤ k ≤ 6.
+        - Masks are **non-destructive**; payload bits remain untouched.
+
+    ### Bohmian Dynamics (QSD Integration)
+        ---------------------------------
+    MSC inherits a Bohm-like interpretive structure:
+    • The `C` bit acts as the "pilot wave", encoding future morphogenetic 
+      implications at the point of observation.
+    • Like a photon “knowing” if it will hit telescope or chloroplast,
+      `C=1` ByteWords *carry semantic payloads determined by their context*.
+    • QSD interprets this as implicate guidance — structure without trajectory.
+    
+    In MSC, emergence is thermodynamic but **goal-aware**: 
+    ByteWords behave not as programs, but as computational *entities*— 
+    whose minimal description is their execution environment itself.
+"""
 # Platform-specific FFI setup
 IS_WINDOWS = os.name == 'nt'
 IS_POSIX = os.name == 'posix'
