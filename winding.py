@@ -1,9 +1,18 @@
-from typing import NamedTuple
+from __future__ import annotations
+# <a href="https://github.com/MOONLAPSED/SmallBang">Morphological Source Code: SmallBang</a> © 2025 by Moonlapsed:MOONLAPSED@GMAIL.COM CC BY 
+from dataclasses import dataclass
+from abc import ABC, abstractmethod
+import hashlib
+import enum
+from enum import Enum, IntEnum, StrEnum, IntFlag, auto
+from typing import TypeVar, Generic, List, Tuple, Callable, Dict, Set, Type, Any, NamedTuple
 from functools import reduce
 from math import log2
 import math
+from datetime import datetime, timedelta
 from functools import reduce
 from operator import xor
+import ctypes
 """Core Operators:
 
 Composition (@): Sequential application of operations
