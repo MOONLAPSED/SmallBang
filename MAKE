@@ -1,0 +1,92 @@
+# ==============================================
+# smallbang SDK Makefile                       |
+# Supports:                                    |
+#   - Headers installation                     |
+#   - Library build (static + optional shared) |
+#   - .pc file generation with Git-based SemVer|
+# ==============================================
+# Usage:
+#   make install         # Generates smallbang.pc in $(PREFIX)/lib/pkgconfig
+#   gcc main.c $(pkg-config --cflags --libs smallbang)
+# Git-based SemVer
+VERSION := $(shell git describe --tags --always)
+
+# Installation prefixes (customizable)
+PREFIX ?= /usr/local
+includedir ?= $(PREFIX)/include
+libdir ?= $(PREFIX)/lib
+bindir ?= $(PREFIX)/bin
+
+# Sources and objects
+SRCS := src/byteword.c
+OBJS := $(SRCS:.c=.o)
+LIBNAME := libbyteword.a   # static library
+# Optional shared lib
+SHLIBNAME := libbyteword.so
+
+# Compiler flags
+CC := gcc
+CFLAGS := -Wall -O2 -I$(includedir)
+LDFLAGS := -L$(libdir) -lbyteword
+
+# Default target
+.PHONY: all
+all: $(LIBNAME) smallbang.pc
+
+# ------------------------
+# Build static library
+# ------------------------
+$(LIBNAME): $(OBJS)
+	ar rcs $@ $^
+
+# Optional shared library (uncomment if needed)
+# $(SHLIBNAME): $(OBJS)
+# 	$(CC) -shared -o $@ $^
+
+# Compile object files
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# ------------------------
+# Install everything
+# ------------------------
+.PHONY: install
+install: all
+	@echo "Installing SDK to $(PREFIX)"
+	# Headers
+	mkdir -p $(DESTDIR)$(includedir)
+	cp -v include/*.h $(DESTDIR)$(includedir)/
+	# Libraries
+	mkdir -p $(DESTDIR)$(libdir)
+	cp -v $(LIBNAME) $(DESTDIR)$(libdir)/
+	# Optional: shared lib
+	# cp -v $(SHLIBNAME) $(DESTDIR)$(libdir)/
+	# .pc file
+	$(MAKE) smallbang.pc DESTDIR=$(DESTDIR)
+
+# ------------------------
+# .pc file generation
+# ------------------------
+smallbang.pc:
+	@echo "Generating smallbang.pc with VERSION=$(VERSION)"
+	mkdir -p $(DESTDIR)$(libdir)/pkgconfig
+	printf "Name: smallbang\nVersion: $(VERSION)\nCflags: -I$(includedir)\nLibs: -L$(libdir) -lbyteword\n" \
+		> $(DESTDIR)$(libdir)/pkgconfig/smallbang.pc
+
+# ------------------------
+# Clean targets
+# ------------------------
+.PHONY: clean
+clean:
+	rm -f $(OBJS) $(LIBNAME) $(SHLIBNAME)
+	rm -f $(DESTDIR)$(libdir)/pkgconfig/smallbang.pc
+
+# ------------------------
+# Phony for help
+# ------------------------
+.PHONY: help
+help:
+	@echo "Usage:"
+	@echo "  make             # build library + .pc"
+	@echo "  make install     # install headers, library, .pc file"
+	@echo "  make clean       # remove build artifacts"
