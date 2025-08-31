@@ -1,13 +1,13 @@
 # ==============================================
-# smallbang SDK Makefile                       |
-# Supports:                                    |
-#   - Headers installation                     |
-#   - Library build (static + optional shared) |
-#   - .pc file generation with Git-based SemVer|
+# smallbang SDK Makefile                       
+#   - Headers installation
+#   - Library build (static + optional shared)
+#   - .pc file generation with Git-based SemVer
 # ==============================================
 # Usage:
 #   make install         # Generates smallbang.pc in $(PREFIX)/lib/pkgconfig
 #   gcc main.c $(pkg-config --cflags --libs smallbang)
+
 # Git-based SemVer
 VERSION := $(shell git describe --tags --always)
 
