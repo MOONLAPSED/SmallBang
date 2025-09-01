@@ -25,7 +25,7 @@ from typing import Any, Callable, Generic, TypeVar, Union
 # Type variables
 T = TypeVar('T')  # Static structure
 V = TypeVar('V')  # Dynamic value
-C = TypeVar('C', bound=Callable)  # Computational transform
+C = TypeVar('C', bound=Callable)  # Computational, imaginary-part or periodicity
 
 
 class OperatorType(Enum):
@@ -291,11 +291,12 @@ class Q:
         self.ψ, self.π = modifier(self.ψ, self.π, self.history)
 
 
-# ===== Demo routines (uncomment to run) =====
+# ===== Demo routines =====
 if __name__ == "__main__":
     # ContinuedFraction demo
     print("π ≈", PI_CF.evaluate(20), " vs math.pi =", math.pi)
-    print("e ≈", E_CF.evaluate(20), " vs math.e =", math.e)
+    print("e ≈", E_CF.evaluate(4), " vs math.e =", math.e)
+    print('e has noncommuting float behavior evident, due to being limited to 4, vs π\'s 20, total-allowed decimal places for calculation.')
     # MorphicComplex demo
     c1 = MorphicComplex(3, 4)
     c2 = MorphicComplex(1, -2)
