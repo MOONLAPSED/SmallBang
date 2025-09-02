@@ -2,15 +2,15 @@
 # -*- coding: utf-8 -*-
 
 """
-msc_qsd.py
+(MSC) Morphological Source Code Framework - "smallBang" universe
+================================================================================
+<https://github.com/moonlapsed/smallbang> • MSC: Morphological Source Code © 2025 by Moonlapsed; see LICENSE
 
 A standard-library-only Python 3.12+ implementation of core MSC/QSD primitives:
   - ContinuedFraction for high-precision irrationals
   - MorphicComplex: reversible complex numbers tied to π via Euler’s identity
   - HilbertSpace & QuantumState: Hilbert-space semantics
   - Q kernel: epigenetic probabilistic runtimes
-
-All classes use @dataclass where appropriate and avoid any third-party dependencies.
 """
 
 import math
@@ -290,6 +290,89 @@ class Q:
     def self_modify(self, modifier: Callable[[Callable, Callable, list[float]], tuple[Callable, Callable]]) -> None:
         self.ψ, self.π = modifier(self.ψ, self.π, self.history)
 
+# ---- Γ / transition helpers for finite config spaces ----
+import numpy as np
+from typing import Sequence, Mapping
+
+def deterministic_transition_matrix(mapping: Mapping[int, int], n: int) -> np.ndarray:
+    """
+    Build an n x n transition matrix Γ where mapping[j] = i means
+    state j at t0 deterministically maps to state i at t.
+    Columns sum to 1 (each origin j maps to exactly one destination).
+    """
+    G = np.zeros((n, n), dtype=float)
+    for j, i in mapping.items():
+        if not (0 <= j < n and 0 <= i < n):
+            raise IndexError("state index out of range")
+        G[i, j] = 1.0
+    return G
+
+def stochastic_transition_matrix_from_counts(counts: dict[int, dict[int, float]], n: int) -> np.ndarray:
+    """
+    counts[j] = {i: weight} meaning from origin j we observed weights for destination i.
+    Produces a column-stochastic matrix (columns sum to 1).
+    """
+    G = np.zeros((n, n), dtype=float)
+    for j, row in counts.items():
+        total = sum(row.values())
+        if total == 0:
+            # default: identity (no observed transitions)
+            G[j, j] = 1.0
+            continue
+        for i, w in row.items():
+            G[i, j] = float(w) / float(total)
+    return G
+
+def apply_kernel(G: np.ndarray, p0: Sequence[float]) -> np.ndarray:
+    """
+    Apply p(t) = Γ p(t0). Here p0 is a column-vector-like sequence (length n).
+    G is shape (n, n) with rows = destinations, columns = origins.
+    Returns p(t) as a numpy array.
+    """
+    p0a = np.asarray(p0, dtype=float)
+    if G.shape[1] != p0a.shape[0]:
+        raise ValueError("dimension mismatch")
+    return G.dot(p0a)
+
+def collapse_to_kronecker(p: Sequence[float], threshold: float = 0.9999) -> np.ndarray:
+    """
+    If some component's probability ≥ threshold, collapse to Kronecker-delta.
+    Otherwise return original normalized distribution.
+    """
+    p = np.asarray(p, dtype=float)
+    total = p.sum()
+    if total <= 0:
+        return p
+    p = p / total
+    i = int(np.argmax(p))
+    if p[i] >= threshold:
+        out = np.zeros_like(p)
+        out[i] = 1.0
+        return out
+    return p
+
+# ---- simple reversible boolean micro-rules -> mapping builder ----
+def xor_division_rule(config_bits: int, rule: Callable[[int], int]) -> Mapping[int,int]:
+    """
+    Build a deterministic mapping for all configurations of `config_bits` bits.
+    `rule` takes an integer (bitstring) and returns an integer (next bitstring).
+    Useful for implementing reversible boolean ops as micro-division events.
+    """
+    N = 1 << config_bits
+    mapping = {}
+    for j in range(N):
+        i = rule(j) & (N-1)
+        mapping[j] = i
+    return mapping
+
+def xor_rule_with_mask(mask: int) -> Callable[[int], int]:
+    """Return rule(j) = j XOR mask (always reversible)."""
+    return lambda j: j ^ mask
+
+def xnor_rule_with_mask(mask: int, bits: int) -> Callable[[int], int]:
+    """Return rule(j) = ~(j XOR mask) masked to bits (xnor via invert)."""
+    mask_all = (1 << bits) - 1
+    return lambda j: (~(j ^ mask)) & mask_all
 
 # ===== Demo routines =====
 if __name__ == "__main__":
