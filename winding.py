@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 import hashlib
+import re
 import enum
 from enum import Enum, IntEnum, StrEnum, IntFlag, auto
 from typing import TypeVar, Generic, List, Tuple, Callable, Dict, Set, Type, Any, NamedTuple
@@ -133,6 +134,299 @@ class WordAlignment(IntEnum):
     QWORD = 8
     CACHE_LINE = 64
     PAGE = 4096
+
+class TorusWinding(IntEnum):
+    """
+    Binary torus winding states (2 bits):
+        NULL  = 0b00 → no twist
+        W1    = 0b01 → twist on axis-1
+        W2    = 0b10 → twist on axis-2
+        W12   = 0b11 → twist on both axes
+    """
+    NULL = 0b00
+    W1   = 0b01
+    W2   = 0b10
+    W12  = 0b11
+
+
+class ByteWord:
+    """
+    An 8-bit Morphological Atom, split into:
+
+      < C | V  V  V | a  a | w  w >
+       └─┬─┘  └────┘  └┬┘  └┬┘
+        captain  value aux  winding
+
+    C (1b), VVV (3b), A1 (1b), A2 (1b), ww (2b)
+    """
+    __slots__ = ("raw", "captain", "value", "aux1", "aux2", "torus_raw", "w1", "w2", "winding")
+
+    def __init__(self, raw: int):
+        if not 0 <= raw <= 0xFF:
+            raise ValueError("ByteWord must be in 0–255 range.")
+        self.raw = raw
+        self._parse_fields()
+
+    def _parse_fields(self) -> None:
+        self.captain   = bool(self.raw & 0b1000_0000)
+        self.value     = (self.raw & 0b0111_0000) >> 4
+        self.aux1      = bool(self.raw & 0b0000_1000)
+        self.aux2      = bool(self.raw & 0b0000_0100)
+        self.torus_raw =  self.raw & 0b0000_0011
+        self.w1        = bool(self.torus_raw & 0b01)
+        self.w2        = bool(self.torus_raw & 0b10)
+        self.winding   = TorusWinding(self.torus_raw)
+
+    @staticmethod
+    def build(captain: int, value: int, aux1: int, aux2: int, winding: TorusWinding) -> "ByteWord":
+        raw = ((captain & 1) << 7) | ((value & 0b111) << 4) | ((aux1 & 1) << 3) | ((aux2 & 1) << 2) | (int(winding) & 0b11)
+        return ByteWord(raw)
+
+    def deputize(self) -> "ByteWord":
+        """Promote highest V-bit to captain if C=0. Leaves ww/A1/A2 intact."""
+        if self.captain:
+            return self
+        new_raw = ((self.value & 0b100) << 4) | ((self.value & 0b011) << 5) \
+                  | (int(self.aux1) << 3) | (int(self.aux2) << 2) \
+                  | self.torus_raw
+        return ByteWord(new_raw)
+
+    def xor_cascade(self, other: "ByteWord") -> "ByteWord":
+        """Unitary XOR on winding bits, preserving high fields and aux bits."""
+        nw1 = self.w1 ^ other.w1
+        nw2 = self.w2 ^ other.w2
+        new_torus = (int(nw2) << 1) | int(nw1)
+        new_raw = (self.raw & 0b1111_1100) | new_torus
+        return ByteWord(new_raw)
+
+    def is_null(self) -> bool:
+        return (not self.captain) and (self.winding == TorusWinding.NULL)
+
+    def __repr__(self) -> str:
+        return (
+            f"ByteWord(C={int(self.captain)}, V={self.value:03b}, "
+            f"A1={int(self.aux1)}, A2={int(self.aux2)}, "
+            f"w1={int(self.w1)}, w2={int(self.w2)}, raw=0x{self.raw:02x})"
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Deterministic tokenization for ANSI/Latin-1
+# ──────────────────────────────────────────────────────────────────────────────
+
+_ANSI_RE = re.compile(
+    r"""(
+        [A-Za-z_][A-Za-z0-9_]* |     # ident
+        \d+\.\d+ |                   # float-like (still treated as bytes; no FP math)
+        \d+ |                        # int-like
+        \s+ |                        # whitespace
+        .                            # single char fallback
+    )""",
+    re.VERBOSE,
+)
+
+def _to_latin1_bytes(s: str) -> bytes:
+    """Strict Latin-1 to guarantee 0..255 domain. Raises on non-ANSI."""
+    return s.encode("latin-1", errors="strict")
+
+def tokenize_ansi(s: str) -> List[bytes]:
+    """Split into byte-tokens while preserving whitespace and punctuation."""
+    tokens: List[bytes] = []
+    for m in _ANSI_RE.finditer(s):
+        tok = m.group(0)
+        tokens.append(_to_latin1_bytes(tok))
+    return tokens
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# User-definable semantics (influence aux bits, captain, winding)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class TokenClass:
+    name: str
+    code3: int  # 0..7 → goes into VVV
+
+
+def default_token_classifier(tok: bytes) -> TokenClass:
+    """Map token → small class set (VVV). Deterministic & reversible enough for analysis."""
+    t = tok
+    if not t:
+        return TokenClass("empty", 0)
+    if t.isspace():
+        return TokenClass("space", 1)
+    if t.isalpha() or (t[:1].isalpha() and all(ch in b"_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" for ch in t)):
+        return TokenClass("ident", 2)
+    if all(48 <= b <= 57 for b in t):  # digits
+        return TokenClass("int", 3)
+    # float-ish (no FP operations — just classification)
+    if b"." in t and all((48 <= b <= 57) or b == 46 for b in t):
+        return TokenClass("float", 4)
+    # groups of punctuation
+    if all(not chr(b).isalnum() and not chr(b).isspace() for b in t):
+        return TokenClass("punct", 5)
+    # fallback: raw bytes chunk
+    return TokenClass("bytes", 6)
+
+
+# Hooks decide A1/A2/C/ww given token metadata + digest stream position/state.
+AuxHook = Callable[[TokenClass, bytes, int, int], Tuple[int, int]]          # -> (A1, A2)
+CaptainHook = Callable[[TokenClass, bytes, int], int]                       # -> C
+WindingHook = Callable[[TokenClass, bytes, int, int], TorusWinding]         # -> ww
+
+
+def default_aux_hook(cls: TokenClass, tok: bytes, ix_in_token: int, global_ix: int) -> Tuple[int, int]:
+    """
+    Example: A1 = parity of token length, A2 = parity of byte popcount at this position.
+    Pure integer; stable.
+    """
+    a1 = (len(tok) & 1)
+    b = tok[ix_in_token] if ix_in_token < len(tok) else 0
+    pop = (b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1) + ((b >> 3) & 1) + ((b >> 4) & 1) + ((b >> 5) & 1) + ((b >> 6) & 1) + ((b >> 7) & 1)
+    a2 = pop & 1
+    return a1, a2
+
+
+def default_captain_hook(cls: TokenClass, tok: bytes, global_ix: int) -> int:
+    """Make first byte of each token a captain; others not."""
+    return 1 if global_ix == 0 else 0
+
+
+def default_winding_hook(cls: TokenClass, tok: bytes, ix_in_token: int, rolling_state: int) -> TorusWinding:
+    """
+    Simple rolling state → winding mapping.
+    rolling_state is a 2-bit register updated by the precompiler.
+    """
+    return TorusWinding(rolling_state & 0b11)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Precompiler
+# ──────────────────────────────────────────────────────────────────────────────
+
+class MorphoPrecompiler:
+    """
+    Deterministic, float-free mapping:
+        ANSI/Latin-1 string  ──tokenize──> tokens ──SHAKE-256 XOF──> ByteWords
+    * Each token emits a 1-ByteWord header then a body stream derived from XOF.
+    * User semantics (hooks) adjust A1/A2/C/ww without breaking determinism.
+    """
+
+    def __init__(
+        self,
+        *,
+        salt: bytes = b"MORPHOSEMANTIC-1",
+        classifier: Callable[[bytes], TokenClass] = default_token_classifier,
+        aux_hook: AuxHook = default_aux_hook,
+        captain_hook: CaptainHook = default_captain_hook,
+        winding_hook: WindingHook = default_winding_hook,
+        header_marker_value: int = 0b111,  # VVV for header ByteWord
+    ):
+        self.salt = bytes(salt)
+        self.classifier = classifier
+        self.aux_hook = aux_hook
+        self.captain_hook = captain_hook
+        self.winding_hook = winding_hook
+        self.header_marker_value = header_marker_value & 0b111
+
+    @staticmethod
+    def _shake(seed: bytes) -> hashlib._shake256:  # type: ignore[attr-defined]
+        return hashlib.shake_256(seed)
+
+    @staticmethod
+    def _u16(b: bytes) -> int:
+        return (b[0] << 8) | b[1]
+
+    def _token_digest_stream(self, tok: bytes, token_index: int, rolling_state: int) -> Iterable[int]:
+        """
+        XOF stream → infinite bytes for this token. We use:
+            SHAKE-256(salt || len(tok) || tok || token_index || rolling_state)
+        """
+        sep = b"|"
+        idx_bytes = token_index.to_bytes(4, "big", signed=False)
+        rs_bytes  = rolling_state.to_bytes(2, "big", signed=False)
+        seed = self.salt + sep + len(tok).to_bytes(2, "big") + sep + tok + sep + idx_bytes + sep + rs_bytes
+        sh = self._shake(seed)
+        while True:
+            # Draw 16 bytes at a time for efficiency; yield byte by byte
+            block = sh.digest(16)
+            for b in block:
+                yield b
+
+    def compile(self, text: str) -> List[ByteWord]:
+        """
+        Compile Latin-1/ANSI string into a ByteWord tape.
+        Deterministic, portable, pure integer (no float).
+        """
+        tokens = tokenize_ansi(text)  # bytes[]
+        tape: List[ByteWord] = []
+
+        # 2-bit rolling state drives default winding, updated deterministically
+        rolling_state = 0
+
+        for t_index, tok in enumerate(tokens):
+            cls = self.classifier(tok)
+
+            # ── Header ByteWord (C=1, VVV=header_marker_value, A1/A2 captured from hooks, ww from rolling state)
+            a1_h, a2_h = self.aux_hook(cls, tok, 0, 0)
+            ww_h = self.winding_hook(cls, tok, 0, rolling_state)
+            header = ByteWord.build(
+                captain=1,
+                value=self.header_marker_value,
+                aux1=a1_h,
+                aux2=a2_h,
+                winding=ww_h
+            )
+            tape.append(header)
+
+            # ── Body stream (one ByteWord per digest byte)
+            #     Map digest byte → fields:
+            #       VVV = (b >> 5)
+            #       A1  = ((b >> 4) & 1) xor (cls.code3 & 1)
+            #       A2  = ((b >> 3) & 1)
+            #       ww  = (rolling_state ^ (b & 0b11)) & 0b11
+            #       C   = captain_hook(...) (1 for first body byte if you want), else 0
+            digest = self._token_digest_stream(tok, t_index, rolling_state)
+            # emit exactly len(tok) body words (1:1 makes downstream indexing simple)
+            for ix, b in zip(range(len(tok)), digest):
+                vvv = (b >> 5) & 0b111
+                a1_body, a2_body = self.aux_hook(cls, tok, ix, ix)
+                a1 = a1_body ^ (cls.code3 & 1) ^ ((b >> 4) & 1)
+                a2 = a2_body ^ ((b >> 3) & 1)
+                ww  = (rolling_state ^ (b & 0b11)) & 0b11
+                c   = self.captain_hook(cls, tok, ix)
+
+                bw = ByteWord.build(
+                    captain=c,
+                    value=vvv,
+                    aux1=a1 & 1,
+                    aux2=a2 & 1,
+                    winding=TorusWinding(ww)
+                )
+                tape.append(bw)
+
+                # Update rolling state (pure integer, small & fast):
+                # mix in token class, byte value parity, and position
+                parity = (bin(b).count("1") & 1)
+                rolling_state = (rolling_state + cls.code3 + parity + (ix & 3)) & 0b11
+
+            # Small, deterministic state bump per token boundary:
+            rolling_state = (rolling_state + (len(tok) & 3)) & 0b11
+
+        return tape
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Disassembler (debug/inspection)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def pretty_tape(tape: List[ByteWord]) -> str:
+    out: List[str] = []
+    for i, bw in enumerate(tape):
+        out.append(
+            f"{i:04d}: C={int(bw.captain)} VVV={bw.value} A1={int(bw.aux1)} A2={int(bw.aux2)} ww={bw.winding.name} raw=0x{bw.raw:02x}"
+        )
+    return "\n".join(out)
 
 #############################################
 # PyWord: Aligned Memory Management
@@ -453,3 +747,20 @@ print(evolved)
 
 print("\nDeputized bw2:")
 print(bw2.deputize())
+
+# Example ANSI strings (Latin-1). Any non-Latin-1 char will raise.
+samples = [
+    "SELECT * FROM users WHERE id=42;",
+    "sum(x) / 3.14159 + y_2",
+    "  \t\n-- punctuation !!! ??? ;;",
+]
+
+pre = MorphoPrecompiler()
+
+for s in samples:
+    print("=" * 80)
+    print("INPUT:", repr(s))
+    tape = pre.compile(s)
+    print(f"ByteWords emitted: {len(tape)}")
+    # Print the first 24 words to keep it readable
+    print(pretty_tape(tape[:24]))
