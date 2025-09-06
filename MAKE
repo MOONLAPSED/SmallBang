@@ -1,92 +1,311 @@
-# ==============================================
-# smallbang SDK Makefile                       
-#   - Headers installation
-#   - Library build (static + optional shared)
-#   - .pc file generation with Git-based SemVer
-# ==============================================
+# =============================================================================
+# smallbang SDK Makefile (pedagogical, practical, extensible)
+# =============================================================================
+# - Out-of-source build in ./build
+# - Static lib by default, optional shared
+# - Git-based SemVer via `git describe --tags --always`
+# - .pc file generation and install/uninstall targets
+# - Useful convenience targets: test, check, dist, fmt
+#
 # Usage:
-#   make install         # Generates smallbang.pc in $(PREFIX)/lib/pkgconfig
-#   gcc main.c $(pkg-config --cflags --libs smallbang)
+#   make                # builds static lib + smallbang.pc
+#   make PREFIX=/opt/smallbang install
+#   make dist           # create src tarball
+#   make clean
+# =============================================================================
 
-# Git-based SemVer
-VERSION := $(shell git describe --tags --always)
+CC ?= gcc
+AR ?= ar
+RANLIB ?= ranlib
+STRIP ?= strip
+PKGCONFIG_INSTALL ?= true   # fallback if no pkg-config tooling needed
 
-# Installation prefixes (customizable)
+# --- Git-version (fallback to "0.0.0" if no git) ---
+VERSION := $(shell git describe --tags --always 2>/dev/null || echo "0.0.0")
+
+# --- Installation prefixes (customizable / DESTDIR support) ---
 PREFIX ?= /usr/local
-includedir ?= $(PREFIX)/include
+DESTDIR ?=
+includedir ?= $(PREFIX)/include/smallbang
 libdir ?= $(PREFIX)/lib
 bindir ?= $(PREFIX)/bin
+pkgconfigdir ?= $(libdir)/pkgconfig
 
-# Sources and objects
-SRCS := src/byteword.c
-OBJS := $(SRCS:.c=.o)
-LIBNAME := libbyteword.a   # static library
-# Optional shared lib
-SHLIBNAME := libbyteword.so
+# --- Build layout ---
+BUILD_DIR := build
+BOOTSTRAP_DIR := bootstrap
+SRC_DIR := src
+INCLUDE_DIR := include
+EXAMPLES_DIR := examples
+TEST_DIR := test
+DOCS_DIR := docs
+SRCS := $(wildcard $(SRC_DIR)/*.c)
+OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
+DEPS := $(OBJS:.o=.d)
 
-# Compiler flags
-CC := gcc
-CFLAGS := -Wall -O2 -I$(includedir)
-LDFLAGS := -L$(libdir) -lbyteword
+# --- Library names ---
+LIBNAME := libbyteword.a
+SHLIB_NAME := libbyteword.so
+LIB_TARGET := $(BUILD_DIR)/$(LIBNAME)
+SHLIB_TARGET := $(BUILD_DIR)/$(SHLIB_NAME)
 
-# Default target
-.PHONY: all
-all: $(LIBNAME) smallbang.pc
+# --- Compiler flags (tune for dev vs release, enforce ANSI C99) ---
+CFLAGS ?= -Wall -Wextra -O2 -g -I$(INCLUDE_DIR) -std=c99
+CFLAGS += -DVERSION=\"$(VERSION)\"
+LDFLAGS ?=
+ARFLAGS ?= rcs
 
-# ------------------------
-# Build static library
-# ------------------------
-$(LIBNAME): $(OBJS)
-	ar rcs $@ $^
+# Toggle building of shared lib
+BUILD_SHARED ?= 0
 
-# Optional shared library (uncomment if needed)
-# $(SHLIBNAME): $(OBJS)
-# 	$(CC) -shared -o $@ $^
+# --- pkg-config metadata ---
+PKG_NAME := smallbang
+PKG_DESCRIPTION := "MSC SmallBang SDK"
+PKG_CFLAGS := -I\$${includedir}
+PKG_LIBS := -L\$${libdir} -lbyteword
 
-# Compile object files
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+# -------------------------
+# Phony targets
+# -------------------------
+.PHONY: all clean dist install uninstall strip-install \
+        test check fmt docs help prepare \
+        tags ctags check-headers lint \
+        pybind config \
+        bootstrap-gcc bootstrap-python bootstrap
 
-# ------------------------
-# Install everything
-# ------------------------
-.PHONY: install
-install: all
-	@echo "Installing SDK to $(PREFIX)"
-	# Headers
-	mkdir -p $(DESTDIR)$(includedir)
-	cp -v include/*.h $(DESTDIR)$(includedir)/
-	# Libraries
-	mkdir -p $(DESTDIR)$(libdir)
-	cp -v $(LIBNAME) $(DESTDIR)$(libdir)/
-	# Optional: shared lib
-	# cp -v $(SHLIBNAME) $(DESTDIR)$(libdir)/
-	# .pc file
-	$(MAKE) smallbang.pc DESTDIR=$(DESTDIR)
+# Default: prepare + build
+all: prepare $(LIB_TARGET) smallbang.pc
+ifeq ($(BUILD_SHARED),1)
+all: $(SHLIB_TARGET)
+endif
 
-# ------------------------
-# .pc file generation
-# ------------------------
+# -------------------------
+# Prepare build directory
+# -------------------------
+prepare:
+	@mkdir -p $(BUILD_DIR)
+
+# -------------------------
+# Compile objects (with dependency generation)
+# -------------------------
+# pattern rule: compile src/foo.c -> build/foo.o
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	@echo "CC $<"
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+# Link static library
+$(LIB_TARGET): $(OBJS)
+	@echo "AR $@"
+	$(AR) $(ARFLAGS) $@ $^
+	@$(RANLIB) $@
+
+# Optional shared object (linux-style, adjust for mac if needed)
+$(SHLIB_TARGET): $(OBJS)
+	@echo "SHARED LINK $@"
+	$(CC) -shared -fPIC -Wl,-soname,$(SHLIB_NAME) -o $@ $^ $(LDFLAGS)
+
+# -------------------------
+# pkg-config file generation (generate in current dir, install copies it)
+# -------------------------
 smallbang.pc:
-	@echo "Generating smallbang.pc with VERSION=$(VERSION)"
-	mkdir -p $(DESTDIR)$(libdir)/pkgconfig
-	printf "Name: smallbang\nVersion: $(VERSION)\nCflags: -I$(includedir)\nLibs: -L$(libdir) -lbyteword\n" \
-		> $(DESTDIR)$(libdir)/pkgconfig/smallbang.pc
+	@echo "Generating $@ (VERSION=$(VERSION))"
+	@printf "prefix=%s\n" "$(PREFIX)" > $@
+	@printf "exec_prefix=\$${prefix}\n" >> $@
+	@printf "libdir=\$${libdir}\n" >> $@
+	@printf "includedir=\$${includedir}\n" >> $@
+	@printf "\nName: %s\n" "$(PKG_NAME)" >> $@
+	@printf "Description: %s\n" "$(PKG_DESCRIPTION)" >> $@
+	@printf "Version: %s\n" "$(VERSION)" >> $@
+	@printf "Cflags: %s\n" "$(PKG_CFLAGS)" >> $@
+	@printf "Libs: %s\n" "$(PKG_LIBS)" >> $@
 
-# ------------------------
-# Clean targets
-# ------------------------
-.PHONY: clean
+# -------------------------
+# Install / uninstall
+# -------------------------
+install: all
+	@echo "Installing smallbang into $(DESTDIR)$(PREFIX)"
+	@mkdir -p $(DESTDIR)$(includedir)
+	@cp -v $(INCLUDE_DIR)/*.h $(DESTDIR)$(includedir)/
+	@mkdir -p $(DESTDIR)$(libdir)
+	@cp -v $(LIB_TARGET) $(DESTDIR)$(libdir)/
+ifneq ($(BUILD_SHARED),0)
+	@cp -v $(SHLIB_TARGET) $(DESTDIR)$(libdir)/
+endif
+	@mkdir -p $(DESTDIR)$(pkgconfigdir)
+	@cp -v smallbang.pc $(DESTDIR)$(pkgconfigdir)/$(PKG_NAME).pc
+
+strip-install: all
+	@echo "Stripping and installing (release)"
+	@$(STRIP) $(LIB_TARGET) || true
+	@mkdir -p $(DESTDIR)$(libdir)
+	@cp -v $(LIB_TARGET) $(DESTDIR)$(libdir)/
+
+uninstall:
+	@echo "Uninstalling from $(DESTDIR)$(PREFIX)"
+	-@rm -f $(DESTDIR)$(libdir)/$(LIBNAME)
+	-@rm -f $(DESTDIR)$(libdir)/$(SHLIB_NAME)
+	-@rm -f $(DESTDIR)$(pkgconfigdir)/$(PKG_NAME).pc
+	-@rm -rf $(DESTDIR)$(includedir)
+
+# -------------------------
+# Packaging / distribution
+# -------------------------
+dist:
+	@echo "Creating source tarball smallbang-$(VERSION).tar.gz"
+	@mkdir -p dist
+	@git ls-files | tar -czf dist/smallbang-$(VERSION).tar.gz -T -
+	@echo "Created dist/smallbang-$(VERSION).tar.gz"
+
+# -------------------------
+# Tests / checks / lint (placeholders)
+# -------------------------
+test:
+	@echo "Running tests (placeholder)"
+	@$(MAKE) -C $(TEST_DIR) || true
+
+check: test
+	@echo "Running static checks (placeholder)"
+	# e.g. run cppcheck, clang-tidy, or unit tests
+
+fmt:
+	@echo "Formatting sources (placeholder)"
+	# e.g. clang-format -i $(SRC_DIR)/*.c include/*.h
+
+lint:
+	@echo "Static analysis (placeholder)"
+	# e.g. clang-tidy $(SRCS) -- $(CFLAGS)
+
+docs:
+	@echo "Docs build (placeholder: A 'docs' system is going to be supported.)"
+
+# -------------------------
+# Clean / dist-clean
+# -------------------------
 clean:
-	rm -f $(OBJS) $(LIBNAME) $(SHLIBNAME)
-	rm -f $(DESTDIR)$(libdir)/pkgconfig/smallbang.pc
+	@echo "Cleaning build artifacts"
+	-@rm -rf $(BUILD_DIR) dist
+	-@rm -f $(LIB_TARGET) $(SHLIB_TARGET)
+	-@rm -f smallbang.pc
 
-# ------------------------
-# Phony for help
-# ------------------------
-.PHONY: help
+# =============================================================================
+# Developer Quality Targets: ctags + header sanity
+# =============================================================================
+# These targets are for *maintainers*, not end-users. They make the repo usable
+# as both an SDK and a pedagogical archive.
+# -----------------------------------------------------------------------------
+
+# Where to write tags
+TAGS_FILE := tags
+
+tags ctags:
+	@echo "Generating $(TAGS_FILE) for all source + headers..."
+	@ctags -R --languages=C --c-kinds=+p \
+	    --fields=+iaS --extra=+q \
+	    -f $(TAGS_FILE) $(SRC_DIR) $(INCLUDE_DIR)
+	@echo "  -> Jump-to-definition ready in Vim/Emacs/VSCode (ctags plugins)."
+
+# -----------------------------------------------------------------------------
+# Header self-containment check
+# -----------------------------------------------------------------------------
+# Rule: Every header in include/ should compile *alone* when wrapped in a .c file.
+# This prevents "works-only-if-included-after-X.h" issues.
+#
+# Each header -> build/.check_<header>.o
+# -----------------------------------------------------------------------------
+
+HEADER_OBJS := $(patsubst $(INCLUDE_DIR)/%.h,$(BUILD_DIR)/.check_%.o,$(wildcard $(INCLUDE_DIR)/*.h))
+
+check-headers: $(HEADER_OBJS)
+	@echo "All headers are self-contained ✅"
+
+# Pattern: include/foo.h -> build/.check_foo.o
+$(BUILD_DIR)/.check_%.o: $(INCLUDE_DIR)/%.h | $(BUILD_DIR)
+	@echo "CHECK-HEADER $<"
+	@echo "#include \"$<\"" > $(BUILD_DIR)/.check_$*.c
+	@$(CC) $(CFLAGS) -c $(BUILD_DIR)/.check_$*.c -o $@ \
+	    || (echo "Header $< is NOT self-contained ❌" && exit 1)
+
+# Clean up check-header scratch
+clean::
+	-@rm -f $(BUILD_DIR)/.check_*.c $(BUILD_DIR)/.check_*.o
+
+# =============================================================================
+# Python binding (cffi-based stub)
+# =============================================================================
+PYBIND_DIR := python
+PYBIND_OUT := $(PYBIND_DIR)/_libbyteword.so
+
+pybind: $(PYBIND_OUT)
+
+$(PYBIND_OUT): $(OBJS)
+	@echo "Building Python binding $@"
+	$(CC) -shared -fPIC -o $@ $^ $(LDFLAGS)
+	@echo "Python extension built. Test with:"
+	@echo "   >>> import smallbang._libbyteword"
+
+# -------------------------
+# Helper: show configuration
+# -------------------------
+config:
+	@printf "CONFIGURATION\n"
+	@printf "  VERSION = %s\n" "$(VERSION)"
+	@printf "  PREFIX  = %s\n" "$(PREFIX)"
+	@printf "  DESTDIR = %s\n" "$(DESTDIR)"
+	@printf "  CC      = %s\n" "$(CC)"
+	@printf "  BUILD_DIR = %s\n" "$(BUILD_DIR)"
+	@printf "  INCLUDE_DIR = %s\n" "$(INCLUDE_DIR)"
+	@printf "  BUILD_SHARED = %s\n" "$(BUILD_SHARED)"
+
+# -------------------------
+# Small help
+# -------------------------
 help:
-	@echo "Usage:"
-	@echo "  make             # build library + .pc"
-	@echo "  make install     # install headers, library, .pc file"
-	@echo "  make clean       # remove build artifacts"
+	@echo "smallbang Makefile help"
+	@echo
+	@echo "  make            -> build (default)"
+	@echo "  make install    -> install to PREFIX (use DESTDIR for packaging)"
+	@echo "  make strip-install -> strip and install (release build)"
+	@echo "  make uninstall  -> uninstall from PREFIX"
+	@echo "  make dist       -> create source tarball"
+	@echo "  make clean      -> remove build artifacts"
+	@echo "  make config     -> print effective configuration"
+	@echo "  make test       -> run tests (placeholder)"
+	@echo "  make bootstrap-gcc -> bootstrap old GCC (4.7.4)"
+	@echo "  make bootstrap-python -> bootstrap CPython (3.12.0)"
+	@echo "  make bootstrap  -> bootstrap both GCC and Python"
+
+# =============================================================================
+# Bootstrapping targets for old compilers and CPython
+# =============================================================================
+# These targets download, build, and install old GCC and CPython locally.
+# Use them to bootstrap on modern systems while targeting older standards.
+# After bootstrapping, you can set CC=$(BOOTSTRAP_DIR)/gcc-install/bin/gcc
+# or PYTHON=$(BOOTSTRAP_DIR)/python-install/bin/python3 in your environment.
+# -----------------------------------------------------------------------------
+
+GCC_VERSION := 4.7.4
+PYTHON_VERSION := 3.12.0
+
+bootstrap: bootstrap-gcc bootstrap-python
+
+bootstrap-gcc:
+	@mkdir -p $(BOOTSTRAP_DIR)
+	cd $(BOOTSTRAP_DIR); $(CURL) -O https://ftp.gnu.org/gnu/gcc/gcc-$(GCC_VERSION)/gcc-$(GCC_VERSION).tar.bz2
+	cd $(BOOTSTRAP_DIR); tar xjf gcc-$(GCC_VERSION).tar.bz2
+	@mkdir -p $(BOOTSTRAP_DIR)/gcc-build
+	cd $(BOOTSTRAP_DIR)/gcc-build; ../gcc-$(GCC_VERSION)/configure --prefix=$(PWD)/$(BOOTSTRAP_DIR)/gcc-install --enable-languages=c --disable-bootstrap --disable-multilib
+	cd $(BOOTSTRAP_DIR)/gcc-build; make -j4
+	cd $(BOOTSTRAP_DIR)/gcc-build; make install
+	@echo "Old GCC bootstrapped at $(BOOTSTRAP_DIR)/gcc-install/bin/gcc"
+
+bootstrap-python:
+	@mkdir -p $(BOOTSTRAP_DIR)
+	cd $(BOOTSTRAP_DIR); $(CURL) -O https://www.python.org/ftp/python/$(PYTHON_VERSION)/Python-$(PYTHON_VERSION).tgz
+	cd $(BOOTSTRAP_DIR); tar xzf Python-$(PYTHON_VERSION).tgz
+	cd $(BOOTSTRAP_DIR)/Python-$(PYTHON_VERSION); ./configure --prefix=$(PWD)/$(BOOTSTRAP_DIR)/python-install
+	cd $(BOOTSTRAP_DIR)/Python-$(PYTHON_VERSION); make -j4
+	cd $(BOOTSTRAP_DIR)/Python-$(PYTHON_VERSION); make install
+	@echo "CPython bootstrapped at $(BOOTSTRAP_DIR)/python-install/bin/python3"
+
+clean::
+	-@rm -rf $(BOOTSTRAP_DIR)
